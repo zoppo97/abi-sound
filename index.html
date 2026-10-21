@@ -1,0 +1,132 @@
+html
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <title>ABI Sound Detector</title>
+    <style>
+        body { font-family: Arial, sans-serif; background: #121212; color: #fff; text-align: center; padding-top: 50px; }
+        .btn { padding: 15px 30px; font-size: 18px; background: #e50914; color: white; border: none; cursor: pointer; border-radius: 5px; }
+        #status { margin-top: 20px; font-size: 24px; color: #888; }
+        #result { margin-top: 40px; font-size: 48px; font-weight: bold; color: #00ffcc; }
+        
+        /* ДОБАВЛЕНО: Стиль для картинок, чтобы они отображались по центру и аккуратно */
+        #itemImg { margin-top: 30px; max-width: 250px; max-height: 250px; display: none; border-radius: 8px; box-shadow: 0 0 20px rgba(0, 255, 204, 0.3); }
+    </style>
+</head>
+<body>
+
+    <h1>Аудио-детектор предметов ABI</h1>
+    <button class="btn" id="startBtn">Включить прослушивание</button>
+    <div id="status">Статус: Отключен</div>
+    <div id="result">Ожидание звука...</div>
+    
+    <!-- ДОБАВЛЕНО: Контейнер для вывода картинки -->
+    <img id="itemImg" src="" alt="Иконка предмета">
+
+    <script>
+        // ИСПРАВЛЕНО: В твою базу данных добавлено поле "img" для каждого предмета
+        const ITEM_DATABASE = [
+            { name: "Ваза", targetFreq: 387, tolerance: 10, img: "https://i.yapx.ru/eUSPG.png" },
+            { name: "Ваза", targetFreq: 457, tolerance: 10, img: "https://i.yapx.ru/eUSPG.png" },
+            { name: "Ожерелье", targetFreq: 11508, tolerance: 30, img: "ozherelie.png" },
+            { name: "Чайник", targetFreq: 205, tolerance: 10, img: "chainik.png" },
+            { name: "Чайник", targetFreq: 2760, tolerance: 10, img: "chainik.png" },
+            { name: "Картина,Реплика,Клетка и т.д.", targetFreq: 11250, tolerance: 10, img: "kartina.png" },
+            { name: "Лира,Прототип,Янтарь", targetFreq: 633, tolerance: 5, img: "lira.png" },
+            { name: "Великолепие,Змея", targetFreq: 938, tolerance: 30, img: "https://i.yapx.ru/eUSPY.png" },
+            { name: "Великолепие,Змея", targetFreq: 352, tolerance: 30, img: "https://i.yapx.ru/eUSPY.png" },
+            { name: "Картина,Реплика,Клетка и т.д.", targetFreq: 9844, tolerance: 10, img: "kartina.png" },
+            { name: "Лира,Прототип,Янтарь", targetFreq: 7096, tolerance: 5, img: "lira.png" },
+            { name: "Лев", targetFreq: 234, tolerance: 10, img: "lev.png" },
+            { name: "Лев", targetFreq: 223, tolerance: 10, img: "lev.png" },
+            { name: "Глина", targetFreq: 141, tolerance: 10, img: "glina.png" },
+            { name: "Модули", targetFreq: 2625, tolerance: 60, img: "modul.png" },
+            { name: "Модули", targetFreq: 973, tolerance: 60, img: "modul.png" },
+            { name: "Лютня", targetFreq: 568, tolerance: 25, img: "lutnya.png" },
+            { name: "Лютня", targetFreq: 176, tolerance: 25, img: "lutnya.png" },
+            { name: "Глина", targetFreq: 281, tolerance: 10, img: "glina.png" },
+            { name: "Картина,Реплика,Клетка и т.д.", targetFreq: 11238, tolerance: 10, img: "kartina.png" }, 
+        ];
+
+        let audioContext;
+        let analyser;
+        let dataArray;
+        let isListening = false;
+
+        document.getElementById('startBtn').addEventListener('click', async () => {
+            if (isListening) return;
+
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+                
+                audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                const source = audioContext.createMediaStreamSource(stream);
+                
+                analyser = audioContext.createAnalyser();
+                analyser.fftSize = 8192; 
+                
+                source.connect(analyser);
+                
+                const bufferLength = analyser.frequencyBinCount;
+                dataArray = new Uint8Array(bufferLength);
+                
+                isListening = true;
+                document.getElementById('status').innerText = "Статус: Слушаю окружение...";
+                document.getElementById('startBtn').style.backgroundColor = "#4CAF50";
+                
+                analyzeAudio();
+
+            } catch (err) {
+                alert("Ошибка доступа к звуку: " + err);
+            }
+        });
+
+        function analyzeAudio() {
+            if (!isListening) return;
+            requestAnimationFrame(analyzeAudio);
+
+            analyser.getByteFrequencyData(dataArray);
+
+            let maxVal = 0;
+            let maxIndex = -1;
+            
+            for (let i = 20; i < dataArray.length; i++) {
+                if (dataArray[i] > maxVal) {
+                    maxVal = dataArray[i];
+                    maxIndex = i;
+                }
+            }
+
+            const nyquist = audioContext.sampleRate / 2;
+            const loudestFrequency = Math.round(maxIndex * nyquist / analyser.frequencyBinCount);
+
+            // Получаем элемент картинки из HTML
+            const imgElement = document.getElementById('itemImg');
+
+            if (maxVal > 10) { 
+                let found = false;
+                for (let item of ITEM_DATABASE) {
+                    if (Math.abs(loudestFrequency - item.targetFreq) <= item.tolerance) {
+                        document.getElementById('result').innerText = `🔥 ${item.name} 🔥`;
+                        
+                        // ДОБАВЛЕНО: Меняем путь к картинке и делаем её видимой
+                        imgElement.src = item.img;
+                        imgElement.style.display = "inline-block";
+                        
+                        found = true;
+                        break;
+                    }
+                }
+                
+                if (!found) {
+                    document.getElementById('result').innerText = `Шум / Хуйня (${loudestFrequency} Гц)`;
+                    
+                    // ДОБАВЛЕНО: Скрываем картинку, если это обычный шум
+                    imgElement.style.display = "none";
+                }
+            }
+        }
+    </script>
+</body>
+</html>
